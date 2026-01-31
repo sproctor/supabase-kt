@@ -3,6 +3,7 @@ package io.github.jan.supabase
 import io.github.jan.supabase.annotations.SupabaseDsl
 import io.github.jan.supabase.annotations.SupabaseInternal
 import io.github.jan.supabase.logging.LogLevel
+import io.github.jan.supabase.logging.SupabaseLogger
 import io.github.jan.supabase.plugins.PluginManager
 import io.github.jan.supabase.plugins.SupabasePlugin
 import io.github.jan.supabase.plugins.SupabasePluginProvider
@@ -62,6 +63,14 @@ class SupabaseClientBuilder @PublishedApi internal constructor(private val supab
             SupabaseClient.DEFAULT_LOG_LEVEL = value
         }
         get() = SupabaseClient.DEFAULT_LOG_LEVEL
+
+    var loggerBuilder: (tag: String) -> SupabaseLogger = { tag ->
+        if (tag == "Supabase-Core") {
+            SupabaseClient.LOGGER
+        } else {
+            SupabaseClient.createLogger(tag)
+        }
+    }
 
     /**
      * The default serializer used to serialize and deserialize custom data types.
@@ -129,7 +138,8 @@ class SupabaseClientBuilder @PublishedApi internal constructor(private val supab
             coroutineDispatcher = coroutineDispatcher,
             accessToken = accessToken,
             plugins = plugins,
-            osInformation = osInformation
+            osInformation = osInformation,
+            loggerBuilder = loggerBuilder
         )
         return SupabaseClientImpl(
             config

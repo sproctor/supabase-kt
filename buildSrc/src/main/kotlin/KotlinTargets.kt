@@ -68,7 +68,8 @@ fun KotlinMultiplatformExtension.jsTarget() {
             testTask {
                 enabled = true
                 useKarma {
-                    useFirefox()
+                    //useFirefox()
+                    useChromeHeadless()
                 }
             }
         }
@@ -87,7 +88,8 @@ fun KotlinMultiplatformExtension.wasmJsTarget() {
             testTask {
                 enabled = true
                 useKarma {
-                    useFirefox()
+                    //useFirefox()
+                    useChromeHeadless()
                 }
             }
         }

@@ -49,7 +49,7 @@ class KtorSupabaseHttpClient @SupabaseInternal constructor(
     private val modifiers = networkConfig.httpConfigOverrides
 
     init {
-        SupabaseClient.LOGGER.d { "Creating KtorSupabaseHttpClient with request timeout $requestTimeout, HttpClientEngine: $engine" }
+        supabase.logger.d { "Creating KtorSupabaseHttpClient with request timeout $requestTimeout, HttpClientEngine: $engine" }
     }
 
     @SupabaseInternal
@@ -63,21 +63,21 @@ class KtorSupabaseHttpClient @SupabaseInternal constructor(
             builder()
         }
         val endPoint = request.url.encodedPath
-        SupabaseClient.LOGGER.d { "Starting ${request.method.value} request to endpoint $endPoint" }
+        supabase.logger.d { "Starting ${request.method.value} request to endpoint $endPoint" }
         val response = try {
             httpClient.request(url, builder)
         } catch(e: HttpRequestTimeoutException) {
-            SupabaseClient.LOGGER.d(e) { "${request.method.value} request to endpoint $endPoint timed out after $requestTimeout" }
+            supabase.logger.d(e) { "${request.method.value} request to endpoint $endPoint timed out after $requestTimeout" }
             throw e
         } catch(e: CancellationException) {
-            SupabaseClient.LOGGER.d(e) { "${request.method.value} request to endpoint $endPoint was cancelled"}
+            supabase.logger.d(e) { "${request.method.value} request to endpoint $endPoint was cancelled"}
             throw e
         } catch(e: Exception) {
-            SupabaseClient.LOGGER.d(e) { "${request.method.value} request to endpoint $endPoint failed with exception ${e.message}" }
+            supabase.logger.d(e) { "${request.method.value} request to endpoint $endPoint failed with exception ${e.message}" }
             throw HttpRequestException(e.message ?: "", request)
         }
         val responseTime = (response.responseTime.timestamp - response.requestTime.timestamp).milliseconds
-        SupabaseClient.LOGGER.d { "${request.method.value} request to endpoint $endPoint successfully finished in $responseTime" }
+        supabase.logger.d { "${request.method.value} request to endpoint $endPoint successfully finished in $responseTime" }
         return response
     }
 
@@ -92,13 +92,13 @@ class KtorSupabaseHttpClient @SupabaseInternal constructor(
         val response = try {
             httpClient.prepareRequest(url, builder)
         } catch(e: HttpRequestTimeoutException) {
-            SupabaseClient.LOGGER.d(e) { "Request timed out after $requestTimeout on url $url" }
+            supabase.logger.d(e) { "Request timed out after $requestTimeout on url $url" }
             throw e
         } catch(e: CancellationException) {
-            SupabaseClient.LOGGER.d(e) { "Request was cancelled on url $url" }
+            supabase.logger.d(e) { "Request was cancelled on url $url" }
             throw e
         } catch(e: Exception) {
-            SupabaseClient.LOGGER.d(e) { "Request failed with ${e.message} on url $url" }
+            supabase.logger.d(e) { "Request failed with ${e.message} on url $url" }
             throw HttpRequestException(e.message ?: "", request)
         }
         return response

@@ -55,8 +55,7 @@ suspend inline fun <reified T> HttpResponse.bodyOrNull(): T? {
     val text = bodyAsText()
     return try {
         supabaseJson.decodeFromString<T>(text)
-    } catch(e: SerializationException) {
-        SupabaseClient.LOGGER.i(e) { "Could not decode $text as ${T::class}." }
+    } catch(_: SerializationException) {
         null
     }
 }

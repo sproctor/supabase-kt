@@ -59,6 +59,11 @@ interface SupabaseClient {
     val defaultSerializer: SupabaseSerializer
 
     /**
+     * The logger used to log debug info and errors
+     */
+    val logger: SupabaseLogger
+
+    /**
      * The custom access token provider used to provide custom access tokens for requests. Configured within the [SupabaseClientBuilder]
      */
     @SupabaseInternal
@@ -107,9 +112,10 @@ internal class SupabaseClientImpl(
     override val supabaseKey: String = config.supabaseKey
     override val useHTTPS: Boolean = config.networkConfig.useHTTPS
     override val coroutineDispatcher: CoroutineDispatcher = config.coroutineDispatcher
+    override val logger: SupabaseLogger = config.loggerBuilder("Supabase-Core")
 
     init {
-        SupabaseClient.LOGGER.i {
+        logger.i {
             "SupabaseClient created! Please report any bugs you find."
         }
     }
@@ -134,7 +140,7 @@ internal class SupabaseClientImpl(
     }
 
     override suspend fun close() {
-        SupabaseClient.LOGGER.i { "Closing SupabaseClient" }
+        logger.i { "Closing SupabaseClient" }
         httpClient.close()
         pluginManager.closeAllPlugins()
     }

@@ -51,7 +51,7 @@ abstract class SupabaseLogger {
  * @param level The minimum log level for this logger.
  * @param tag The tag for this logger
  */
-internal class KermitSupabaseLogger(
+class KermitSupabaseLogger(
     initialLevel: LogLevel,
     tag: String,
 ) : SupabaseLogger() {
