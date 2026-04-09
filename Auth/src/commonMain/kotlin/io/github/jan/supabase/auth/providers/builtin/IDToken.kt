@@ -9,10 +9,9 @@ import io.github.jan.supabase.auth.providers.IDTokenProvider
 import io.github.jan.supabase.auth.user.UserInfo
 import io.github.jan.supabase.exceptions.SupabaseEncodingException
 import io.github.jan.supabase.supabaseJson
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
@@ -44,13 +43,13 @@ data object IDToken : DefaultAuthProvider<IDToken.Config, UserInfo> {
         @property:SupabaseInternal @SerialName("link_identity") var linkIdentity: Boolean = false
     ) : DefaultAuthProvider.Config()
 
-    @OptIn(ExperimentalSerializationApi::class)
     override fun decodeResult(json: JsonObject): UserInfo = try {
         supabaseJson.decodeFromJsonElement(json)
-    } catch(e: MissingFieldException) {
+    } catch(_: SerializationException) {
         throw SupabaseEncodingException("Couldn't decode sign up id token result. Input: $json")
     }
 
-    override fun encodeCredentials(credentials: Config.() -> Unit): JsonObject = supabaseJson.encodeToJsonElement(Config().apply(credentials)).jsonObject
+    override fun encodeCredentials(credentials: Config.() -> Unit): JsonObject =
+        supabaseJson.encodeToJsonElement(Config().apply(credentials)).jsonObject
 
 }

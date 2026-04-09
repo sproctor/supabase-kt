@@ -36,7 +36,6 @@ import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.fetchAndIncrement
 import kotlin.concurrent.atomics.incrementAndFetch
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
 
 @PublishedApi internal class RealtimeImpl(override val supabaseClient: SupabaseClient, override val config: Realtime.Config) : Realtime {
@@ -185,7 +184,6 @@ import kotlin.time.Clock
         }
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     override suspend fun setAuth(token: String?) {
         val newToken = token ?: config.accessToken(supabaseClient)
 

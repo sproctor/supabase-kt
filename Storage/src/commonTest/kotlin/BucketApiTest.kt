@@ -35,7 +35,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -616,7 +615,6 @@ class BucketApiTest {
         }
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun testUploadMethod(
         method: HttpMethod,
         urlPath: String,

@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalEncodingApi::class, ExperimentalEncodingApi::class)
-
 package io.github.jan.supabase.storage.resumable
 
 import io.github.jan.supabase.annotations.SupabaseInternal
@@ -27,7 +25,6 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 
@@ -190,7 +187,6 @@ internal class ResumableClientImpl(private val storageApi: BucketApi, private va
         put("contentType", contentType?.toString() ?: ContentType.defaultForFilePath(path).toString())
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun encodeMetadata(metadata: Map<String, String>): String {
         return metadata.entries.joinToString(",") { (key, value) ->
             key + " " + Base64.encode(value.toByteArray())

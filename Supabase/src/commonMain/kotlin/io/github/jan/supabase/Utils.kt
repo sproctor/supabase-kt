@@ -5,8 +5,6 @@ import io.github.jan.supabase.exceptions.SupabaseEncodingException
 import io.github.jan.supabase.logging.i
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.MissingFieldException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -19,14 +17,13 @@ val supabaseJson = Json {
     encodeDefaults = false
 }
 
-@OptIn(ExperimentalSerializationApi::class)
 @SupabaseInternal
 suspend inline fun <reified T> HttpResponse.safeBody(context: String? = null): T {
     val text = bodyAsText()
     val contextMessage = if(context != null) " in $context" else ""
     return try {
         supabaseJson.decodeFromString(text)
-    } catch(e: MissingFieldException) {
+    } catch(_: SerializationException) {
         throw SupabaseEncodingException("Couldn't decode payload$contextMessage as ${T::class.simpleName}. Input: ${text.replace("\n", "")}")
     }
 }

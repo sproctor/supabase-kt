@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalTime::class)
-
 package io.github.jan.supabase.storage
 
 import io.github.jan.supabase.SupabaseSerializer
@@ -10,7 +8,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonObject
-import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
 
 /**

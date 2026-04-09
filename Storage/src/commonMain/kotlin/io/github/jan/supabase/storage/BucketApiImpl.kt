@@ -290,7 +290,6 @@ internal class BucketApiImpl(
         return FileUploadResponse(id, path, key)
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun HttpRequestBuilder.defaultUploadRequest(
         path: String,
         data: UploadData,

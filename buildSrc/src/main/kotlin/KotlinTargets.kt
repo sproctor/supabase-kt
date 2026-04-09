@@ -80,7 +80,7 @@ fun KotlinMultiplatformExtension.jsTarget() {
     }
 }
 
-@OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+@OptIn(ExperimentalWasmDsl::class)
 fun KotlinMultiplatformExtension.wasmJsTarget() {
     wasmJs {
         browser {

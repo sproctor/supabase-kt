@@ -1,4 +1,3 @@
-@file:OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
