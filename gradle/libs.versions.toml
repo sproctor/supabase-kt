@@ -15,7 +15,6 @@ agp = "8.11.1"
 maven-publish = "0.36.0"
 apollo-kotlin = "4.4.2"
 serialization = "1.10.0"
-#korlibs = "6.0.0"
 detekt = "1.23.8"
 moshi = "1.15.2"
 jackson = "2.21.2"
@@ -31,7 +30,6 @@ filekit = "0.8.8"
 kotlinx-browser = "0.5.0"
 immutable-collections = "0.4.0"
 crypto = "0.6.0"
-jwt-kt = "1.2.1"
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
@@ -94,7 +92,6 @@ multiplatform-settings-test = { module = "com.russhwolf:multiplatform-settings-t
 
 apollo-kotlin = { module = "com.apollographql.apollo:apollo-runtime", version.ref = "apollo-kotlin" }
 
-#krypto = { module = "com.soywiz:korlibs-crypto", version.ref = "korlibs" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 
 moshi = { module = "com.squareup.moshi:moshi", version.ref = "moshi" }
@@ -118,6 +115,7 @@ filekit-compose = { module = "io.github.vinceglb:filekit-compose", version.ref =
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist-permissions" }
 coil2-svg = { module = "io.coil-kt:coil-svg", version.ref = "coil2" }
 coil2-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil2" }
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 
 [bundles]
 ktor-client = ["ktor-client-core", "ktor-client-content-negotiation", "ktor-json"]

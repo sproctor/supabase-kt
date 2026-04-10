@@ -20,6 +20,7 @@ import io.github.jan.supabase.testing.respondJson
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -43,6 +44,7 @@ class AuthTest {
     }
     private lateinit var client: SupabaseClient
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun testLoadingSessionFromStorage() = runTest {
         val testDispatcher = UnconfinedTestDispatcher(testScheduler)

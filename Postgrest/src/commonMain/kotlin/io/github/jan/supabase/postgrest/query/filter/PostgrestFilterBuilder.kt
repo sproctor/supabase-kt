@@ -201,7 +201,6 @@ class PostgrestFilterBuilder(
      * @param negate Whether to negate the condition
      * @param referencedTable The table to reference
      */
-    @PostgrestFilterDSL
     inline fun or(negate: Boolean = false, referencedTable: String? = null, filter: @PostgrestFilterDSL PostgrestFilterBuilder.() -> Unit) {
         val prefix = buildString {
             if(negate) append("not.")
@@ -217,7 +216,6 @@ class PostgrestFilterBuilder(
      * @param negate Whether to negate the condition
      * @param referencedTable The table to reference
      */
-    @PostgrestFilterDSL
     inline fun and(negate: Boolean = false, referencedTable: String? = null, filter: @PostgrestFilterDSL PostgrestFilterBuilder.() -> Unit) {
         val prefix = buildString {
             if(negate) append("not.")

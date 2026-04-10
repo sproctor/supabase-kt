@@ -12,8 +12,6 @@ import io.github.jan.supabase.realtime.PostgresJoinConfig
 import io.github.jan.supabase.realtime.Presence
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.RealtimeChannel
-import io.github.jan.supabase.realtime.RealtimeChannel.Companion.CHANNEL_EVENT_REPLY
-import io.github.jan.supabase.realtime.RealtimeChannel.Companion.CHANNEL_EVENT_SYSTEM
 import io.github.jan.supabase.realtime.RealtimeJoinPayload
 import io.github.jan.supabase.realtime.RealtimeMessage
 import io.github.jan.supabase.realtime.broadcastFlow
@@ -26,7 +24,6 @@ import io.github.jan.supabase.testing.assertPathIs
 import io.github.jan.supabase.testing.pathAfterVersion
 import io.github.jan.supabase.testing.toJsonElement
 import io.ktor.client.engine.mock.respond
-import io.ktor.util.encodeBase64
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.launchIn
@@ -43,6 +40,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -51,7 +49,9 @@ import kotlin.time.Clock
 
 val EXAMPLE_JWT = buildString {
     append(JWTUtils.encodeToBase64Url(Json.encodeToString(JwtHeader(JwtHeader.Algorithm.HS256))) + ".")
-    append(buildJsonObject { put("exp", Clock.System.now().epochSeconds + 500) }.toString().encodeBase64())
+    append(Base64.withPadding(Base64.PaddingOption.ABSENT).encode(
+        buildJsonObject { put("exp", Clock.System.now().epochSeconds + 500) }.toString().encodeToByteArray())
+    )
     append("." + JWTUtils.encodeToBase64Url("test"))
 }
 
@@ -66,7 +66,7 @@ class RealtimeChannelTest {
                 },
                 supabaseHandler = {
                     val channel = it.channel("")
-                    assertFailsWith<IllegalStateException>() {
+                    assertFailsWith<IllegalStateException> {
                         channel.subscribe()
                     }
                 },
@@ -100,9 +100,9 @@ class RealtimeChannelTest {
             createTestClient(
                 wsHandler = { i, o ->
                     i.receive()
-                    o.send(RealtimeMessage("realtime:$channelId", CHANNEL_EVENT_SYSTEM, buildJsonObject { put("status", "ok") }, ""))
+                    o.send(RealtimeMessage("realtime:$channelId", RealtimeChannel.CHANNEL_EVENT_SYSTEM, buildJsonObject { put("status", "ok") }, ""))
                     i.receive()
-                    o.send(RealtimeMessage("realtime:$channelId", CHANNEL_EVENT_REPLY, buildJsonObject { put("status", "ok") }, ""))
+                    o.send(RealtimeMessage("realtime:$channelId", RealtimeChannel.CHANNEL_EVENT_REPLY, buildJsonObject { put("status", "ok") }, ""))
                 },
                 supabaseHandler = {
                     val channel = it.channel("channelId")
@@ -127,7 +127,7 @@ class RealtimeChannelTest {
         val expectedPresenceKey = "presenceKey"
         runTest {
             createTestClient(
-                wsHandler = { i, o ->
+                wsHandler = { i, _ ->
                     val message = i.receive()
                     val payload = Json.decodeFromJsonElement<RealtimeJoinPayload>(message.payload)
                     assertEquals("realtime:$expectedChannelId", message.topic)
