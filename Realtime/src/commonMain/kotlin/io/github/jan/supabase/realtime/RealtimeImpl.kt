@@ -226,7 +226,6 @@ import kotlin.time.Duration
         _websocket.load()?.disconnect()
         _websocket.store(null)
         for ((_, channel) in subscriptions) {
-            (channel as? RealtimeChannelImpl)?.cancelRejoin()
             channel.updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
         }
         _status.value = Realtime.Status.DISCONNECTED

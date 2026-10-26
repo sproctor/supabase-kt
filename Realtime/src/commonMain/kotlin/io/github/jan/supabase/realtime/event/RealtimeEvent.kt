@@ -36,11 +36,11 @@ internal sealed interface RealtimeEvent {
         )
 
         /**
-         * Resolves the event from a realtime message: the one event that applies to it, or null if none does.
+         * Resolves the event from a realtime message.
          * The events' conditions don't overlap, so their order doesn't matter.
          */
         fun resolveEvent(realtimeMessage: RealtimeMessage): RealtimeEvent? {
-            return EVENTS.singleOrNull { it.appliesTo(realtimeMessage) }
+            return EVENTS.firstOrNull { it.appliesTo(realtimeMessage) }
         }
         
     }
