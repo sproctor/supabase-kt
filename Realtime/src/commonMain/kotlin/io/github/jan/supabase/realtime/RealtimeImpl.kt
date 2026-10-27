@@ -244,7 +244,7 @@ import kotlin.time.Duration
         logger.d { "Received message $message" }
         val channel = subscriptions[message.topic] as? RealtimeChannelImpl
         val ref = message.ref?.toIntOrNull()
-        if(ref != null && heartbeatRef.compareAndSet(ref, NO_HEARTBEAT)) {
+        if(message.topic == HEARTBEAT_TOPIC && ref != null && heartbeatRef.compareAndSet(ref, NO_HEARTBEAT)) {
             logger.d { "Heartbeat received" }
         } else {
             logger.d { "Received event ${message.event} for channel ${channel?.topic}" }
@@ -284,8 +284,9 @@ import kotlin.time.Duration
             return
         }
         logger.d { "Sending heartbeat" }
-        heartbeatRef.store(websocket.makeRef().toInt())
-        send(RealtimeMessage("phoenix", "heartbeat", buildJsonObject { }, heartbeatRef.toString()))
+        val ref = websocket.makeRef()
+        heartbeatRef.store(ref.toInt())
+        send(RealtimeMessage(HEARTBEAT_TOPIC, "heartbeat", buildJsonObject { }, ref))
     }
 
     override suspend fun removeChannel(channel: RealtimeChannel) {
@@ -409,7 +410,8 @@ import kotlin.time.Duration
     }
 
     private companion object {
-        // Not 0: refs start at 0, so the close for a socket's first join looked like a heartbeat reply
+        const val HEARTBEAT_TOPIC = "phoenix"
+        // Not 0: refs start at 0, so a socket's first heartbeat can have ref 0
         const val NO_HEARTBEAT = -1
     }
 
