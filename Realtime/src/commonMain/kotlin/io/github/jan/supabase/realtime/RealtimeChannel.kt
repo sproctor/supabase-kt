@@ -140,7 +140,7 @@ interface RealtimeChannel {
      * watch for [RealtimeSystemPayload.status] == `"ok"` to know the Postgres replication connection is ready.
      *
      * Errors arrive with [RealtimeSystemPayload.status] == `"error"`, e.g. when the server refuses a postgres_changes
-     * subscription. As in realtime-js, the channel stays joined.
+     * subscription. 
      */
     fun systemFlow(): Flow<RealtimeSystemPayload>
 
