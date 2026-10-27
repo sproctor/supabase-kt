@@ -22,7 +22,7 @@ internal sealed interface RealtimeEvent {
 
     companion object {
 
-        private val EVENTS = setOf( // Kotlin doesn't provide a way to get all objects of a sealed interface outside the JVM, so we have to list them manually
+        internal val EVENTS = setOf( // Kotlin doesn't provide a way to get all objects of a sealed interface outside the JVM, so we have to list them manually
             RBroadcastEvent,
             RCloseEvent,
             RErrorEvent,
@@ -37,6 +37,7 @@ internal sealed interface RealtimeEvent {
 
         /**
          * Resolves the event from a realtime message.
+         * The events' conditions don't overlap, so their order doesn't matter.
          */
         fun resolveEvent(realtimeMessage: RealtimeMessage): RealtimeEvent? {
             return EVENTS.firstOrNull { it.appliesTo(realtimeMessage) }

@@ -64,7 +64,7 @@ import kotlin.time.Duration
     override val status: StateFlow<Realtime.Status> = _status.asStateFlow()
     private val _subscriptions = AtomicMutableMap<String, RealtimeChannel>()
     override val subscriptions: Map<String, RealtimeChannel> = _subscriptions
-    private val scope = config.coroutineScope ?: CoroutineScope(
+    internal val scope = config.coroutineScope ?: CoroutineScope(
         supabaseClient.coroutineDispatcher +
                 SupervisorJob() +
                 CoroutineExceptionHandler { _, throwable ->

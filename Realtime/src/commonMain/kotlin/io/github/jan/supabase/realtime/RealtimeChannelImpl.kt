@@ -23,6 +23,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.appendPathSegments
 import io.ktor.http.contentType
 import io.ktor.http.headers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -71,6 +74,7 @@ internal class RealtimeChannelImpl(
 
     internal val joinAttempt = AtomicInt(0)
     private val joinRef = AtomicReference<String?>(null)
+    private val rejoinJob = AtomicReference<Job?>(null)
 
     private suspend fun accessToken() = realtimeImpl.config.accessToken(supabaseClient) ?: realtimeImpl.accessToken
 
@@ -82,8 +86,13 @@ internal class RealtimeChannelImpl(
         callbackManager.reset()
     }
 
-    @OptIn(SupabaseInternal::class)
     override suspend fun subscribe(blockUntilSubscribed: Boolean) {
+        cancelRejoin()
+        join(blockUntilSubscribed)
+    }
+
+    @OptIn(SupabaseInternal::class)
+    private suspend fun join(blockUntilSubscribed: Boolean) {
         if(realtimeImpl.status.value != Realtime.Status.CONNECTED) {
             if(!realtimeImpl.config.connectOnSubscribe) error("You can't subscribe to a channel while the realtime client is not connected. Did you forget to call `realtime.connect()`?")
             realtimeImpl.connect()
@@ -142,6 +151,11 @@ internal class RealtimeChannelImpl(
 
     @OptIn(SupabaseInternal::class)
     suspend fun onMessage(message: RealtimeMessage) {
+        // Ignore messages for a previous join, like Phoenix's client
+        if(message.joinRef != null && message.joinRef != joinRef.load()) {
+            logger.d { "Dropping ${message.event} for earlier join ${message.joinRef} of channel $topic" }
+            return
+        }
         val event = RealtimeEvent.resolveEvent(message)
         if(event == null) {
             logger.e { "Received message without event: $message" }
@@ -203,14 +217,22 @@ internal class RealtimeChannelImpl(
         throw RestException(errorMessage, null, response)
     }
 
-    override suspend fun scheduleRejoin() {
-        logger.d { "Rejoining channel $topic in" }
-        delay(realtime.config.rejoinDelay)
-        resubscribe()
+    override fun scheduleRejoin() {
+        logger.d { "Rejoining channel $topic in ${realtime.config.rejoinDelay}" }
+        val job = realtimeImpl.scope.launch(start = CoroutineStart.LAZY) {
+            delay(realtime.config.rejoinDelay)
+            resubscribe()
+        }
+        rejoinJob.exchange(job)?.cancel()
+        job.start()
+    }
+
+    private fun cancelRejoin() {
+        rejoinJob.exchange(null)?.cancel()
     }
 
     override suspend fun unsubscribe() {
-        _status.value = RealtimeChannel.Status.UNSUBSCRIBING
+        updateStatus(RealtimeChannel.Status.UNSUBSCRIBING)
         logger.d { "Unsubscribing from channel $topic" }
         val websocket = realtime.websocket
         if(checkWebsocket(websocket, "Failed to unsubscribe from channel $topic")) return
@@ -375,16 +397,16 @@ internal class RealtimeChannelImpl(
     }
 
     override fun updateStatus(status: RealtimeChannel.Status) {
-        if(status == RealtimeChannel.Status.SUBSCRIBED) {
-            joinAttempt.store(0)
+        when(status) {
+            RealtimeChannel.Status.SUBSCRIBED -> joinAttempt.store(0)
+            RealtimeChannel.Status.UNSUBSCRIBING, RealtimeChannel.Status.UNSUBSCRIBED -> cancelRejoin()
+            RealtimeChannel.Status.SUBSCRIBING -> Unit
         }
         _status.value = status
     }
 
     private suspend fun resubscribe() {
-        unsubscribe()
-        _status.first { it == RealtimeChannel.Status.UNSUBSCRIBED }
-        subscribe()
+        join(blockUntilSubscribed = false)
     }
 
 }
