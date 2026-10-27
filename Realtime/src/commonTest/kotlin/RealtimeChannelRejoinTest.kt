@@ -1,26 +1,23 @@
+import app.cash.turbine.test
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.RealtimeMessage
-import io.github.jan.supabase.realtime.RealtimeSystemPayload
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.fail
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -34,21 +31,17 @@ class RealtimeChannelRejoinTest {
     @Test
     fun testRefusedPostgresChangesReachSystemFlowWithoutRejoining() = runRejoinTest { client, sockets ->
         val channel = client.channel(channelId)
-        channel.postgresChangeFlow<PostgresAction>("public") { table = "table" }
-        val system = Channel<RealtimeSystemPayload>(Channel.UNLIMITED)
-        backgroundScope.launch { channel.systemFlow().collect { system.send(it) } }
-        val (socket, _) = subscribe(channel, sockets)
-        socket.push(refused())
-        // The collector may or may not have seen the join's "ok"
-        val error = within {
-            var payload = system.receive()
-            while(payload.status == "ok") payload = system.receive()
-            payload
+        channel.postgresChangeFlow<PostgresAction>("public") { table = "table" }.launchIn(backgroundScope)
+        channel.systemFlow().test {
+            val (socket, _) = subscribe(channel, sockets)
+            assertEquals("ok", awaitItem().status)
+            socket.push(refused())
+            val error = awaitItem()
+            assertEquals("error", error.status)
+            assertEquals("postgres_changes", error.extension)
+            assertNothingSent(socket)
+            assertEquals(RealtimeChannel.Status.SUBSCRIBED, channel.status.value)
         }
-        assertEquals("error", error.status)
-        assertEquals("postgres_changes", error.extension)
-        assertNothingSent(socket)
-        assertEquals(RealtimeChannel.Status.SUBSCRIBED, channel.status.value)
     }
 
     @Test
@@ -56,10 +49,10 @@ class RealtimeChannelRejoinTest {
         val channel = client.channel(channelId)
         channel.subscribe()
         val socket = sockets.created.last()
-        socket.push(rejected(nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
-        nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+        socket.push(rejected(awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
+        awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
         socket.push(subscribed())
-        eventually { channel.status.value == RealtimeChannel.Status.SUBSCRIBED }
+        channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
     }
 
     @Test
@@ -68,9 +61,9 @@ class RealtimeChannelRejoinTest {
         channel.subscribe()
         val socket = sockets.created.last()
         repeat(3) {
-            socket.push(rejected(nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
+            socket.push(rejected(awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
         }
-        eventually { channel.status.value == RealtimeChannel.Status.UNSUBSCRIBED }
+        channel.awaitStatus(RealtimeChannel.Status.UNSUBSCRIBED)
         assertNothingSent(socket)
     }
 
@@ -79,9 +72,9 @@ class RealtimeChannelRejoinTest {
         val channel = client.channel(channelId)
         val (socket, joinRef) = subscribe(channel, sockets)
         socket.push(channelError(joinRef))
-        nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+        awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
         socket.push(subscribed())
-        eventually { channel.status.value == RealtimeChannel.Status.SUBSCRIBED }
+        channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
     }
 
     @Test
@@ -89,11 +82,13 @@ class RealtimeChannelRejoinTest {
         val channel = client.channel(channelId)
         val (socket, replaced) = subscribe(channel, sockets)
         socket.push(channelError(replaced))
-        nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+        awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
         // The server closes the join the new one replaced
         socket.push(close(replaced))
         socket.push(subscribed())
-        eventually { channel.status.value == RealtimeChannel.Status.SUBSCRIBED && client.realtime.subscriptions.containsKey(topic) }
+        // The close is handled before the join's "ok"
+        channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
+        assertTrue(client.realtime.subscriptions.containsKey(topic))
         assertEquals(1, sockets.created.size)
     }
 
@@ -102,12 +97,12 @@ class RealtimeChannelRejoinTest {
         val channel = client.channel(channelId)
         val (socket, firstJoinRef) = subscribe(channel, sockets)
         socket.push(channelError(firstJoinRef))
-        val secondJoinRef = nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN).joinRef
+        val secondJoinRef = awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN).joinRef
         socket.push(subscribed())
-        eventually { channel.status.value == RealtimeChannel.Status.SUBSCRIBED }
+        channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
         // Counting starts over after the join succeeded, so this is retried too
         socket.push(channelError(secondJoinRef))
-        nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+        awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
     }
 
     private fun runRejoinTest(
@@ -134,33 +129,27 @@ class RealtimeChannelRejoinTest {
     private suspend fun subscribe(channel: RealtimeChannel, sockets: ScriptedWebsocketFactory): Pair<ScriptedWebsocket, String?> {
         channel.subscribe()
         val socket = sockets.created.last()
-        val joinRef = nextSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN).joinRef
+        val joinRef = awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN).joinRef
         socket.push(subscribed())
-        eventually { channel.status.value == RealtimeChannel.Status.SUBSCRIBED }
+        channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
         return socket to joinRef
     }
 
-    private suspend fun nextSent(socket: ScriptedWebsocket, event: String): RealtimeMessage {
-        val message = within { socket.nextSent() }
+    private suspend fun awaitSent(socket: ScriptedWebsocket, event: String): RealtimeMessage {
+        val message = socket.sent.awaitItem()
         assertEquals(event, message.event)
         return message
     }
 
+    // The library runs on its own dispatcher here, so give it real time to send something
     private suspend fun assertNothingSent(socket: ScriptedWebsocket) {
-        val sent = withContext(Dispatchers.Default) {
-            withTimeoutOrNull(300.milliseconds) { socket.nextSent() }
-        }
-        assertNull(sent, "Unexpected ${sent?.event}")
+        withContext(Dispatchers.Default) { delay(300.milliseconds) }
+        socket.sent.expectNoEvents()
     }
 
-    // The library runs on its own dispatcher here, so waits are in real time. withTimeoutOrNull, not withTimeout:
-    // its TimeoutCancellationException would only cancel the coroutine createTestClient runs the test in, which passes.
-    private suspend fun <T> within(block: suspend () -> T): T = withContext(Dispatchers.Default) {
-        withTimeoutOrNull(FLOW_TIMEOUT) { block() } ?: fail("Nothing within $FLOW_TIMEOUT")
-    }
-
-    private suspend fun eventually(condition: () -> Boolean) = within {
-        while(!condition()) delay(10.milliseconds)
+    private suspend fun RealtimeChannel.awaitStatus(expected: RealtimeChannel.Status) = status.test {
+        while(awaitItem() != expected) Unit
+        cancelAndIgnoreRemainingEvents()
     }
 
     private fun subscribed() = system("ok", "system", "Subscribed")

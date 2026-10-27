@@ -14,7 +14,7 @@ data object RErrorEvent : RealtimeEvent {
 
     override suspend fun handle(channel: RealtimeChannel, message: RealtimeMessage) {
         channel as RealtimeChannelImpl
-        // Like Phoenix's client, only a rejected join rejoins: another push failing leaves the channel as it is
+        // Only rejoin if the join itself was rejected
         if(message.event == RealtimeChannel.CHANNEL_EVENT_REPLY && channel.status.value != RealtimeChannel.Status.SUBSCRIBING) {
             channel.logger.e { "Push to channel ${message.topic} failed: ${message.payload}" }
             return

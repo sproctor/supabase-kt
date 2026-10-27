@@ -109,6 +109,7 @@ import kotlin.time.Duration
         _status.value = Realtime.Status.CONNECTING
         try {
             _websocket.store(websocketFactory.create(websocketUrl))
+            heartbeatRef.store(NO_HEARTBEAT)
             _status.value = Realtime.Status.CONNECTED
             logger.i { "Connected to realtime websocket!" }
             listenForMessages()
@@ -225,10 +226,7 @@ import kotlin.time.Duration
         heartbeatJob?.cancel()
         _websocket.load()?.disconnect()
         _websocket.store(null)
-        // The next socket can't answer a heartbeat sent on this one
-        heartbeatRef.store(NO_HEARTBEAT)
         for ((_, channel) in subscriptions) {
-            (channel as? RealtimeChannelImpl)?.cancelRejoin()
             channel.updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
         }
         _status.value = Realtime.Status.DISCONNECTED

@@ -82,7 +82,6 @@ internal class RealtimeChannelImpl(
         userPresenceEnabled || callbackManager.hasPresenceCallback()
 
     override fun teardown() {
-        cancelRejoin()
         updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
         callbackManager.reset()
     }
@@ -152,7 +151,7 @@ internal class RealtimeChannelImpl(
 
     @OptIn(SupabaseInternal::class)
     suspend fun onMessage(message: RealtimeMessage) {
-        // Like Phoenix's client: a message for an earlier join, e.g. the server's close for the join a rejoin replaced
+        // Ignore messages for a previous join, like Phoenix's client
         if(message.joinRef != null && message.joinRef != joinRef.load()) {
             logger.d { "Dropping ${message.event} for earlier join ${message.joinRef} of channel $topic" }
             return
@@ -218,7 +217,6 @@ internal class RealtimeChannelImpl(
         throw RestException(errorMessage, null, response)
     }
 
-    // Not in the caller's coroutine: event handlers call this from the message loop. Replaces a pending rejoin.
     override fun scheduleRejoin() {
         logger.d { "Rejoining channel $topic in ${realtime.config.rejoinDelay}" }
         val job = realtimeImpl.scope.launch(start = CoroutineStart.LAZY) {
@@ -229,13 +227,12 @@ internal class RealtimeChannelImpl(
         job.start()
     }
 
-    internal fun cancelRejoin() {
+    private fun cancelRejoin() {
         rejoinJob.exchange(null)?.cancel()
     }
 
     override suspend fun unsubscribe() {
-        cancelRejoin()
-        _status.value = RealtimeChannel.Status.UNSUBSCRIBING
+        updateStatus(RealtimeChannel.Status.UNSUBSCRIBING)
         logger.d { "Unsubscribing from channel $topic" }
         val websocket = realtime.websocket
         if(checkWebsocket(websocket, "Failed to unsubscribe from channel $topic")) return
@@ -400,13 +397,14 @@ internal class RealtimeChannelImpl(
     }
 
     override fun updateStatus(status: RealtimeChannel.Status) {
-        if(status == RealtimeChannel.Status.SUBSCRIBED) {
-            joinAttempt.store(0)
+        when(status) {
+            RealtimeChannel.Status.SUBSCRIBED -> joinAttempt.store(0)
+            RealtimeChannel.Status.UNSUBSCRIBING, RealtimeChannel.Status.UNSUBSCRIBED -> cancelRejoin()
+            RealtimeChannel.Status.SUBSCRIBING -> Unit
         }
         _status.value = status
     }
 
-    // Like Phoenix's rejoin: send the join again, and the server replaces the channel's current join
     private suspend fun resubscribe() {
         join(blockUntilSubscribed = false)
     }
