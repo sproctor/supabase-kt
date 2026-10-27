@@ -58,24 +58,34 @@ class RealtimeHeartbeatTest {
     @Test
     fun testChannelMessageWithRefZeroIsNotTakenForHeartbeatReply() {
         val channelId = "channelId"
+        val topic = "realtime:$channelId"
+        val sockets = ScriptedWebsocketFactory()
         runTest {
             createTestClient(
-                wsHandler = { i, o ->
-                    handleSubscribe(i, o, channelId)
-                    // The server closes a join with its join_ref as the ref, and a socket's first join_ref is 0
-                    o.send(RealtimeMessage("realtime:$channelId", RealtimeChannel.CHANNEL_EVENT_CLOSE, buildJsonObject { }, "0", "0").toFrame())
-                    // Removing the subscribed channel sends a leave
-                    assertEquals(RealtimeChannel.CHANNEL_EVENT_LEAVE, i.receive().toMessage().event)
-                },
+                wsHandler = { _, _ -> },
                 supabaseHandler = {
                     val channel = it.channel(channelId)
-                    channel.subscribe(blockUntilSubscribed = true)
-                    channel.status.test(FLOW_TIMEOUT) {
-                        do {
-                            val status = awaitItem()
-                        } while(status != RealtimeChannel.Status.UNSUBSCRIBED)
-                    }
-                    assertNull(it.realtime.subscriptions["realtime:$channelId"])
+                    channel.subscribe()
+                    val socket = sockets.created.single()
+                    val join = socket.sent.awaitItem()
+                    assertEquals("0", join.joinRef, "A socket's first join_ref is 0")
+                    socket.push(RealtimeMessage(topic, RealtimeChannel.CHANNEL_EVENT_SYSTEM, buildJsonObject {
+                        put("status", "ok")
+                        put("extension", "system")
+                        put("channel", channelId)
+                        put("message", "Subscribed")
+                    }, null))
+                    // Only close once the channel is seen as subscribed, or the close could get there first
+                    channel.awaitStatus(RealtimeChannel.Status.SUBSCRIBED)
+                    // The server closes a join with its join_ref as the ref
+                    socket.push(RealtimeMessage(topic, RealtimeChannel.CHANNEL_EVENT_CLOSE, buildJsonObject { }, join.joinRef, join.joinRef))
+                    // Removing the subscribed channel sends a leave
+                    assertEquals(RealtimeChannel.CHANNEL_EVENT_LEAVE, socket.sent.awaitItem().event)
+                    channel.awaitStatus(RealtimeChannel.Status.UNSUBSCRIBED)
+                    assertNull(it.realtime.subscriptions[topic])
+                },
+                realtimeConfig = {
+                    websocketFactory = sockets
                 },
             )
         }
@@ -107,6 +117,13 @@ class RealtimeHeartbeatTest {
         val message = sent.awaitItem()
         assertEquals("heartbeat", message.event)
         return message
+    }
+
+    private suspend fun RealtimeChannel.awaitStatus(expected: RealtimeChannel.Status) = status.test {
+        do {
+            val status = awaitItem()
+        } while(status != expected)
+        cancelAndIgnoreRemainingEvents()
     }
 
     private suspend fun ScriptedWebsocket.reply(heartbeat: RealtimeMessage) = push(
