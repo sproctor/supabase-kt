@@ -3,7 +3,9 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.RealtimeChannelBuilder
 import io.github.jan.supabase.realtime.RealtimeChannelError
+import io.github.jan.supabase.realtime.RealtimeChannelImpl
 import io.github.jan.supabase.realtime.RealtimeMessage
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
@@ -22,6 +24,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 // Channel errors and rejoins, as in realtime-js (Phoenix's client): a `system` error is reported and the channel stays
 // joined; a channel error or a rejected join rejoins by sending the join again.
@@ -159,6 +162,86 @@ class RealtimeChannelRejoinTest {
             withContext(Dispatchers.Default) { delay(300.milliseconds) }
             expectNoEvents()
         }
+    }
+
+    @Test
+    fun testUnansweredJoinTimesOutAndIsRetried() = runRejoinTest({ timeout = 200.milliseconds }) { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.errorFlow().test {
+            channel.subscribe()
+            val socket = sockets.created.last()
+            awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+            val error = awaitItem()
+            assertEquals(RealtimeChannelError.Type.TIMED_OUT, error.type)
+            assertNull(error.reason)
+            assertNull(error.payload)
+            awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+            // The retried join times out too
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun testTimedOutJoinsGiveUpAfterMaxAttempts() = runRejoinTest({
+        maxAttempts = 2
+        timeout = 100.milliseconds
+    }) { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.subscribe()
+        val socket = sockets.created.last()
+        repeat(2) { awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN) }
+        channel.awaitStatus(RealtimeChannel.Status.UNSUBSCRIBED)
+        assertNothingSent(socket)
+    }
+
+    @Test
+    fun testAnsweredJoinDoesNotTimeOut() = runRejoinTest({ timeout = 500.milliseconds }) { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.errorFlow().test {
+            val (socket, _) = subscribe(channel, sockets)
+            withContext(Dispatchers.Default) { delay(1.seconds) }
+            expectNoEvents()
+            socket.sent.expectNoEvents()
+        }
+    }
+
+    @Test
+    fun testRejectedJoinDoesNotAlsoTimeOut() = runRejoinTest({
+        timeout = 300.milliseconds
+        rejoinDelay = 1.seconds
+    }) { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.errorFlow().test {
+            channel.subscribe()
+            val socket = sockets.created.last()
+            socket.push(rejected(awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
+            assertEquals(RealtimeChannelError.Type.JOIN_REJECTED, awaitItem().type)
+            // The rejoin comes after rejoinDelay, which is longer than the rejected join's timeout
+            awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+            expectNoEvents()
+            // The new join's own timeout
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    // Like realtime-js: the server can hold the join until the postgres changes subscription is set up
+    @Test
+    fun testWaitingForPostgresChangesExtendsTheJoinTimeout() = runRejoinTest({ timeout = 20.seconds }) { client, _ ->
+        fun channel(id: String, builder: RealtimeChannelBuilder.() -> Unit = {}, withChanges: Boolean = true): RealtimeChannelImpl {
+            val channel = client.channel(id, builder) as RealtimeChannelImpl
+            if(withChanges) channel.postgresChangeFlow<PostgresAction>("public") { table = "table" }
+            return channel
+        }
+        assertEquals(20.seconds, channel("plain").joinTimeout())
+        // The server's default wait (15 s) plus time for it to reject the join
+        assertEquals(25.seconds, channel("waiting", { postgresChangesOptions { wait = true } }).joinTimeout())
+        assertEquals(20.seconds, channel("shortWait", {
+            postgresChangesOptions {
+                wait = true
+                timeout = 1.seconds
+            }
+        }).joinTimeout())
+        assertEquals(20.seconds, channel("noChanges", { postgresChangesOptions { wait = true } }, withChanges = false).joinTimeout())
     }
 
     private fun runRejoinTest(

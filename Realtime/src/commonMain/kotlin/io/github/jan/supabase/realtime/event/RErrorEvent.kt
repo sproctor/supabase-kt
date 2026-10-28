@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
-import kotlin.concurrent.atomics.incrementAndFetch
 
 /**
  * Event that handles an error event
@@ -23,15 +22,8 @@ data object RErrorEvent : RealtimeEvent {
             channel.logger.e { "Push to channel ${message.topic} failed: ${message.payload}" }
             return
         }
-        channel.callbackManager.triggerError(channelError(message))
-        val currentAttempt = channel.joinAttempt.incrementAndFetch()
-        if(currentAttempt >= channel.realtime.config.maxAttempts) {
-            channel.logger.e { "Failed to rejoin channel ${message.topic} after $currentAttempt attempts. Giving up. ${message.payload}" }
-            channel.updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
-            return
-        }
-        channel.logger.e { "Received an error in channel ${message.topic}. That could be as a result of an invalid access token. Trying to rejoin the channel...\n${message.payload}" }
-        channel.scheduleRejoin()
+        channel.logger.e { "Received an error in channel ${message.topic}. That could be as a result of an invalid access token.\n${message.payload}" }
+        channel.rejoinAfter(channelError(message))
     }
 
     private fun channelError(message: RealtimeMessage): RealtimeChannelError {

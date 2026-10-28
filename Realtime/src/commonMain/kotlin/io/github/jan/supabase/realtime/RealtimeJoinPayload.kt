@@ -56,8 +56,9 @@ data class BroadcastJoinConfig(
  * @param wait Whether the server holds the join until the postgres changes subscription is set up, so that
  * [RealtimeChannel.Status.SUBSCRIBED] means changes are being received. If it can't be set up, the server rejects the join
  * (e.g. `RealtimeDisabledForConfiguration` for a table that isn't enabled for Realtime), the reason reaches
- * [RealtimeChannel.errorFlow], and the channel retries it like any other channel error. Has no effect on a channel without
- * postgres changes. Realtime servers without support for it ignore it.
+ * [RealtimeChannel.errorFlow], and the channel retries it like any other channel error. The channel's join timeout is
+ * extended to outlast the server's wait (see [Realtime.Config.timeout]). Has no effect on a channel without postgres
+ * changes. Realtime servers without support for it ignore it.
  * @param timeout How long the server holds the join. Null uses the server's default (15 s); the server caps it at its own maximum.
  */
 @Serializable

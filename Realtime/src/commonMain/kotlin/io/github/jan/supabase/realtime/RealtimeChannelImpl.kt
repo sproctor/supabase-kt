@@ -46,9 +46,12 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import kotlin.reflect.KClass
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 internal class RealtimeChannelImpl(
     override val realtime: Realtime,
@@ -73,9 +76,10 @@ internal class RealtimeChannelImpl(
     private val httpClient = realtimeImpl.supabaseClient.httpClient
     private val userPresenceEnabled = presenceJoinConfig.enabled
 
-    internal val joinAttempt = AtomicInt(0)
+    private val joinAttempt = AtomicInt(0)
     private val joinRef = AtomicReference<String?>(null)
     private val rejoinJob = AtomicReference<Job?>(null)
+    private val joinTimeoutJob = AtomicReference<Job?>(null)
 
     private suspend fun accessToken() = realtimeImpl.config.accessToken(supabaseClient) ?: realtimeImpl.accessToken
 
@@ -134,6 +138,7 @@ internal class RealtimeChannelImpl(
         realtimeImpl.send(
             RealtimeMessage(topic, RealtimeChannel.CHANNEL_EVENT_JOIN, joinConfigObject, websocket.makeRef(), joinRef.load())
         )
+        startJoinTimeout()
         if(blockUntilSubscribed) {
             status.first { it == RealtimeChannel.Status.SUBSCRIBED }
         }
@@ -219,6 +224,8 @@ internal class RealtimeChannelImpl(
     }
 
     override fun scheduleRejoin() {
+        // The join failed, so it can't also time out
+        cancelJoinTimeout()
         logger.d { "Rejoining channel $topic in ${realtime.config.rejoinDelay}" }
         val job = realtimeImpl.scope.launch(start = CoroutineStart.LAZY) {
             delay(realtime.config.rejoinDelay)
@@ -230,6 +237,41 @@ internal class RealtimeChannelImpl(
 
     private fun cancelRejoin() {
         rejoinJob.exchange(null)?.cancel()
+    }
+
+    // Reports the error, then rejoins until maxAttempts is reached
+    internal fun rejoinAfter(error: RealtimeChannelError) {
+        callbackManager.triggerError(error)
+        val currentAttempt = joinAttempt.incrementAndFetch()
+        if(currentAttempt >= realtime.config.maxAttempts) {
+            logger.e { "Failed to rejoin channel $topic after $currentAttempt attempts. Giving up." }
+            updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
+            return
+        }
+        scheduleRejoin()
+    }
+
+    private fun startJoinTimeout() {
+        val timeout = joinTimeout()
+        val job = realtimeImpl.scope.launch(start = CoroutineStart.LAZY) {
+            delay(timeout)
+            if(status.value != RealtimeChannel.Status.SUBSCRIBING) return@launch
+            logger.e { "No reply to the join of channel $topic within $timeout" }
+            rejoinAfter(RealtimeChannelError(RealtimeChannelError.Type.TIMED_OUT, null, null))
+        }
+        joinTimeoutJob.exchange(job)?.cancel()
+        job.start()
+    }
+
+    private fun cancelJoinTimeout() {
+        joinTimeoutJob.exchange(null)?.cancel()
+    }
+
+    internal fun joinTimeout(): Duration {
+        val options = postgresChangesOptions
+        if(options?.wait != true || clientChanges.isEmpty()) return realtime.config.timeout
+        // Like realtime-js: outlast the server holding the join until the postgres changes subscription is set up
+        return maxOf(realtime.config.timeout, (options.timeout ?: POSTGRES_CHANGES_WAIT_TIMEOUT) + POSTGRES_CHANGES_WAIT_ERROR_GRACE)
     }
 
     override suspend fun unsubscribe() {
@@ -406,8 +448,14 @@ internal class RealtimeChannelImpl(
 
     override fun updateStatus(status: RealtimeChannel.Status) {
         when(status) {
-            RealtimeChannel.Status.SUBSCRIBED -> joinAttempt.store(0)
-            RealtimeChannel.Status.UNSUBSCRIBING, RealtimeChannel.Status.UNSUBSCRIBED -> cancelRejoin()
+            RealtimeChannel.Status.SUBSCRIBED -> {
+                joinAttempt.store(0)
+                cancelJoinTimeout()
+            }
+            RealtimeChannel.Status.UNSUBSCRIBING, RealtimeChannel.Status.UNSUBSCRIBED -> {
+                cancelRejoin()
+                cancelJoinTimeout()
+            }
             RealtimeChannel.Status.SUBSCRIBING -> Unit
         }
         _status.value = status
@@ -415,6 +463,13 @@ internal class RealtimeChannelImpl(
 
     private suspend fun resubscribe() {
         join(blockUntilSubscribed = false)
+    }
+
+    private companion object {
+        // The Realtime server's default for postgres_changes_options.timeout
+        val POSTGRES_CHANGES_WAIT_TIMEOUT = 15.seconds
+        // The time the server takes to reject the join after waiting, like realtime-js's POSTGRES_CHANGES_WAIT_ERROR_GRACE
+        val POSTGRES_CHANGES_WAIT_ERROR_GRACE = 10.seconds
     }
 
 }
