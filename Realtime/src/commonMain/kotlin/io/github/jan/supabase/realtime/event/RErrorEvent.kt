@@ -2,8 +2,12 @@ package io.github.jan.supabase.realtime.event
 
 import io.github.jan.supabase.logging.e
 import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.RealtimeChannelError
 import io.github.jan.supabase.realtime.RealtimeChannelImpl
 import io.github.jan.supabase.realtime.RealtimeMessage
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.concurrent.atomics.incrementAndFetch
 
@@ -19,6 +23,7 @@ data object RErrorEvent : RealtimeEvent {
             channel.logger.e { "Push to channel ${message.topic} failed: ${message.payload}" }
             return
         }
+        channel.callbackManager.triggerError(channelError(message))
         val currentAttempt = channel.joinAttempt.incrementAndFetch()
         if(currentAttempt >= channel.realtime.config.maxAttempts) {
             channel.logger.e { "Failed to rejoin channel ${message.topic} after $currentAttempt attempts. Giving up. ${message.payload}" }
@@ -27,6 +32,17 @@ data object RErrorEvent : RealtimeEvent {
         }
         channel.logger.e { "Received an error in channel ${message.topic}. That could be as a result of an invalid access token. Trying to rejoin the channel...\n${message.payload}" }
         channel.scheduleRejoin()
+    }
+
+    private fun channelError(message: RealtimeMessage): RealtimeChannelError {
+        val rejectedJoin = message.event == RealtimeChannel.CHANNEL_EVENT_REPLY
+        // A rejected join has its reason in the reply's response
+        val details = if(rejectedJoin) message.payload["response"] as? JsonObject else message.payload
+        return RealtimeChannelError(
+            type = if(rejectedJoin) RealtimeChannelError.Type.JOIN_REJECTED else RealtimeChannelError.Type.CHANNEL_ERROR,
+            reason = (details?.get("reason") as? JsonPrimitive)?.contentOrNull,
+            payload = message.payload
+        )
     }
 
     override fun appliesTo(message: RealtimeMessage): Boolean {

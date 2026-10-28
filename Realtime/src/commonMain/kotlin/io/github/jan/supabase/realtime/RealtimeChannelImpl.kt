@@ -367,6 +367,13 @@ internal class RealtimeChannelImpl(
         awaitClose { callbackManager.removeCallbackById(id) }
     }
 
+    override fun errorFlow(): Flow<RealtimeChannelError> = callbackFlow {
+        val id = callbackManager.addErrorCallback {
+            trySend(it)
+        }
+        awaitClose { callbackManager.removeCallbackById(id) }
+    }
+
   /*  override fun <T : Any> RealtimeChannel.broadcastFlowInternal(type: KType, event: String): Flow<T> = callbackFlow {
         val id = callbackManager.addBroadcastCallback(event) {
             val decodedValue = try {

@@ -144,6 +144,15 @@ interface RealtimeChannel {
      */
     fun systemFlow(): Flow<RealtimeSystemPayload>
 
+    /**
+     * Listen for errors the server reports for this channel: a rejected join or a channel error. Like realtime-js's
+     * `CHANNEL_ERROR`. The channel rejoins after each one, until [Realtime.Config.maxAttempts] is reached.
+     *
+     * A refused postgres changes subscription arrives here as a rejected join when the channel waits for it
+     * ([PostgresChangesOptions.wait]), and on [systemFlow] otherwise.
+     */
+    fun errorFlow(): Flow<RealtimeChannelError>
+
     @SupabaseInternal
     fun RealtimeChannel.addPostgresChange(data: PostgresJoinConfig)
 

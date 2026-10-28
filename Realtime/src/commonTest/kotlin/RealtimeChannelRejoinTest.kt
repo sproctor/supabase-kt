@@ -3,6 +3,7 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.realtime.PostgresAction
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.RealtimeChannel
+import io.github.jan.supabase.realtime.RealtimeChannelError
 import io.github.jan.supabase.realtime.RealtimeMessage
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
@@ -17,6 +18,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -103,6 +105,60 @@ class RealtimeChannelRejoinTest {
         // Counting starts over after the join succeeded, so this is retried too
         socket.push(channelError(secondJoinRef))
         awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)
+    }
+
+    @Test
+    fun testRejectedJoinReachesErrorFlow() = runRejoinTest { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.errorFlow().test {
+            channel.subscribe()
+            val socket = sockets.created.last()
+            socket.push(rejected(awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
+            val error = awaitItem()
+            assertEquals(RealtimeChannelError.Type.JOIN_REJECTED, error.type)
+            assertEquals("RealtimeDisabledForConfiguration: Unable to subscribe to changes", error.reason)
+        }
+    }
+
+    @Test
+    fun testChannelErrorReachesErrorFlow() = runRejoinTest { client, sockets ->
+        val channel = client.channel(channelId)
+        val (socket, joinRef) = subscribe(channel, sockets)
+        channel.errorFlow().test {
+            socket.push(channelError(joinRef))
+            val error = awaitItem()
+            assertEquals(RealtimeChannelError.Type.CHANNEL_ERROR, error.type)
+            assertNull(error.reason)
+        }
+    }
+
+    @Test
+    fun testErrorThatGivesUpReachesErrorFlow() = runRejoinTest({ maxAttempts = 2 }) { client, sockets ->
+        val channel = client.channel(channelId)
+        channel.errorFlow().test {
+            channel.subscribe()
+            val socket = sockets.created.last()
+            repeat(2) {
+                socket.push(rejected(awaitSent(socket, RealtimeChannel.CHANNEL_EVENT_JOIN)))
+                assertEquals(RealtimeChannelError.Type.JOIN_REJECTED, awaitItem().type)
+            }
+        }
+        channel.awaitStatus(RealtimeChannel.Status.UNSUBSCRIBED)
+    }
+
+    @Test
+    fun testFailedPushIsNotAChannelError() = runRejoinTest { client, sockets ->
+        val channel = client.channel(channelId)
+        val (socket, joinRef) = subscribe(channel, sockets)
+        channel.errorFlow().test {
+            // The server's error reply to a push on the joined channel, not to its join
+            socket.push(RealtimeMessage(topic, RealtimeChannel.CHANNEL_EVENT_REPLY, buildJsonObject {
+                put("status", "error")
+                put("response", buildJsonObject { put("reason", "unmatched topic") })
+            }, "5", joinRef))
+            withContext(Dispatchers.Default) { delay(300.milliseconds) }
+            expectNoEvents()
+        }
     }
 
     private fun runRejoinTest(
