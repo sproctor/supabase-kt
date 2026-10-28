@@ -56,6 +56,7 @@ internal class RealtimeChannelImpl(
     private val broadcastJoinConfig: BroadcastJoinConfig,
     private val presenceJoinConfig: PresenceJoinConfig,
     private val isPrivate: Boolean,
+    private val postgresChangesOptions: PostgresChangesOptions? = null,
 ) : RealtimeChannel {
 
     override val logger: SupabaseLogger = realtime.logger.appendTag(" [$topic$]")
@@ -120,7 +121,7 @@ internal class RealtimeChannelImpl(
         }
         val postgrestChanges = clientChanges.toList()
         presenceJoinConfig.enabled = shouldEnablePresence()
-        val joinConfig = RealtimeJoinPayload(RealtimeJoinConfig(broadcastJoinConfig, presenceJoinConfig, postgrestChanges, isPrivate))
+        val joinConfig = RealtimeJoinPayload(RealtimeJoinConfig(broadcastJoinConfig, presenceJoinConfig, postgrestChanges, isPrivate, postgresChangesOptions))
         val joinConfigObject = buildJsonObject {
             putJsonObject(Json.encodeToJsonElement(joinConfig).jsonObject)
             currentJwt?.let {
