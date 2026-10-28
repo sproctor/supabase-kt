@@ -139,6 +139,22 @@ For more information, checkout [supabase-kt-plugins](https://github.com/supabase
 ### Miscellaneous
 - [Supabase Edge Functions Kotlin](https://github.com/manriif/supabase-edge-functions-kt) - Build, serve and deploy Supabase Edge Functions with Kotlin and Gradle.
 
+# Supabase Service Compatibility
+
+supabase-kt only guarantees compatibility with the latest release of each Supabase service, unless a minimum supported version is explicitly listed below.
+
+Older service releases are supported on a best-effort basis, but compatibility is not guaranteed.
+
+If you self-host Supabase, we recommend upgrading your services to their latest releases when upgrading the SDK.
+
+| Service   | Module                       | Server releases                                                            | Lowest supported version |
+| --------- | ---------------------------- | -------------------------------------------------------------------------- | ------------------------ |
+| Auth      | [`auth-kt`](/Auth)           | [supabase/auth](https://github.com/supabase/auth/releases)                 | Latest release           |
+| Storage   | [`storage-kt`](/Storage)     | [supabase/storage](https://github.com/supabase/storage/releases)           | Latest release           |
+| Functions | [`functions-kt`](/Functions) | [supabase/edge-runtime](https://github.com/supabase/edge-runtime/releases) | Latest release           |
+| PostgREST | [`postgrest-kt`](/Postgrest) | [PostgREST/postgrest](https://github.com/PostgREST/postgrest/releases)     | Latest release           |
+| Realtime  | [`realtime-kt`](/Realtime)   | [supabase/realtime](https://github.com/supabase/realtime/releases)         | Latest release           |
+
 # Samples
 
 ### Multiplatform Applications

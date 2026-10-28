@@ -32,6 +32,12 @@ Supported targets:
 
 </details>
 
+# Supabase Service Compatibility
+
+`postgrest-kt` only guarantees compatibility with the [latest PostgREST release](https://github.com/PostgREST/postgrest/releases). Older PostgREST releases are supported on a best-effort basis, but compatibility is not guaranteed.
+
+If you self-host PostgREST, we recommend upgrading to the latest release when upgrading this SDK.
+
 # Installation
 
 Newest version: [![](https://img.shields.io/github/release/supabase-community/supabase-kt?label=)](https://github.com/supabase-community/supabase-kt/releases)

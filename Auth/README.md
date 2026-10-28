@@ -38,6 +38,12 @@ Supported targets:
 
 </details>
 
+# Supabase Service Compatibility
+
+`auth-kt` only guarantees compatibility with the [latest Supabase Auth release](https://github.com/supabase/auth/releases). Older Supabase Auth releases are supported on a best-effort basis, but compatibility is not guaranteed.
+
+If you self-host Supabase Auth, we recommend upgrading to the latest release when upgrading this SDK.
+
 # Installation
 
 Newest version: [![](https://img.shields.io/github/release/supabase-community/supabase-kt?label=)](https://github.com/supabase-community/supabase-kt/releases)
