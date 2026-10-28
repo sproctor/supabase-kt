@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -80,6 +81,8 @@ internal class RealtimeChannelImpl(
     private val joinRef = AtomicReference<String?>(null)
     private val rejoinJob = AtomicReference<Job?>(null)
     private val joinTimeoutJob = AtomicReference<Job?>(null)
+    // Why the channel stopped trying to join (it gave up or was closed), which ends a blocking subscribe()
+    private val joinEnded = MutableStateFlow<JoinEnded?>(null)
 
     private suspend fun accessToken() = realtimeImpl.config.accessToken(supabaseClient) ?: realtimeImpl.accessToken
 
@@ -93,6 +96,7 @@ internal class RealtimeChannelImpl(
 
     override suspend fun subscribe(blockUntilSubscribed: Boolean) {
         cancelRejoin()
+        joinEnded.value = null
         join(blockUntilSubscribed)
     }
 
@@ -140,7 +144,14 @@ internal class RealtimeChannelImpl(
         )
         startJoinTimeout()
         if(blockUntilSubscribed) {
-            status.first { it == RealtimeChannel.Status.SUBSCRIBED }
+            // Both are state, so an outcome that comes before this starts waiting isn't missed
+            combine(status, joinEnded) { status, ended ->
+                when {
+                    status == RealtimeChannel.Status.SUBSCRIBED -> true
+                    ended != null -> throw RealtimeChannelJoinException(ended.message, ended.error)
+                    else -> false
+                }
+            }.first { it }
         }
     }
 
@@ -245,10 +256,15 @@ internal class RealtimeChannelImpl(
         val currentAttempt = joinAttempt.incrementAndFetch()
         if(currentAttempt >= realtime.config.maxAttempts) {
             logger.e { "Failed to rejoin channel $topic after $currentAttempt attempts. Giving up." }
+            endJoin("Failed to join channel $topic after $currentAttempt attempts: ${error.reason ?: error.type}", error)
             updateStatus(RealtimeChannel.Status.UNSUBSCRIBED)
             return
         }
         scheduleRejoin()
+    }
+
+    internal fun endJoin(message: String, error: RealtimeChannelError?) {
+        joinEnded.value = JoinEnded(message, error)
     }
 
     private fun startJoinTimeout() {
@@ -464,6 +480,9 @@ internal class RealtimeChannelImpl(
     private suspend fun resubscribe() {
         join(blockUntilSubscribed = false)
     }
+
+    // Not the exception itself, so each blocking subscribe() throws one with its own stack trace
+    private data class JoinEnded(val message: String, val error: RealtimeChannelError?)
 
     private companion object {
         // The Realtime server's default for postgres_changes_options.timeout
