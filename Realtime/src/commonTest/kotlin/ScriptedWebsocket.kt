@@ -49,4 +49,9 @@ class ScriptedWebsocket : RealtimeWebsocket {
     }
 
     suspend fun push(message: RealtimeMessage) = incoming.send(message.toFrame())
+
+    /** The connection is lost without a close from the client, e.g. while the device sleeps. */
+    fun lose() {
+        incoming.close(IllegalStateException("Connection lost"))
+    }
 }

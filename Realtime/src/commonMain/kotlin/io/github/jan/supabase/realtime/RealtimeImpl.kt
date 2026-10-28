@@ -81,7 +81,7 @@ import kotlin.time.Duration
     private var heartbeatJob: Job? = null
     private var messageJob: Job? = null
     private var disconnectJob: Job? = null
-    private val heartbeatRef = AtomicInt(0)
+    private val heartbeatRef = AtomicInt(NO_HEARTBEAT)
     override val apiVersion: Int
         get() = Realtime.API_VERSION
 
@@ -109,7 +109,7 @@ import kotlin.time.Duration
         _status.value = Realtime.Status.CONNECTING
         try {
             _websocket.store(websocketFactory.create(websocketUrl))
-            heartbeatRef.store(0)
+            heartbeatRef.store(NO_HEARTBEAT)
             _status.value = Realtime.Status.CONNECTED
             logger.i { "Connected to realtime websocket!" }
             listenForMessages()
@@ -244,7 +244,7 @@ import kotlin.time.Duration
         logger.d { "Received message $message" }
         val channel = subscriptions[message.topic] as? RealtimeChannelImpl
         val ref = message.ref?.toIntOrNull()
-        if(ref != null && heartbeatRef.compareAndSet(ref, 0)) {
+        if(message.topic == HEARTBEAT_TOPIC && ref != null && heartbeatRef.compareAndSet(ref, NO_HEARTBEAT)) {
             logger.d { "Heartbeat received" }
         } else {
             logger.d { "Received event ${message.event} for channel ${channel?.topic}" }
@@ -273,8 +273,8 @@ import kotlin.time.Duration
     }
 
     private suspend fun sendHeartbeat() {
-        if (heartbeatRef.load() != 0) {
-            heartbeatRef.store(0)
+        if (heartbeatRef.load() != NO_HEARTBEAT) {
+            heartbeatRef.store(NO_HEARTBEAT)
             logger.w { "Heartbeat timeout. Trying to reconnect in ${config.reconnectDelay}" }
             reconnect()
             return
@@ -284,8 +284,9 @@ import kotlin.time.Duration
             return
         }
         logger.d { "Sending heartbeat" }
-        heartbeatRef.store(websocket.makeRef().toInt())
-        send(RealtimeMessage("phoenix", "heartbeat", buildJsonObject { }, heartbeatRef.toString()))
+        val ref = websocket.makeRef()
+        heartbeatRef.store(ref.toInt())
+        send(RealtimeMessage(HEARTBEAT_TOPIC, "heartbeat", buildJsonObject { }, ref))
     }
 
     override suspend fun removeChannel(channel: RealtimeChannel) {
@@ -406,6 +407,12 @@ import kotlin.time.Duration
                 connect(true)
             }
         }
+    }
+
+    private companion object {
+        const val HEARTBEAT_TOPIC = "phoenix"
+        // Not 0: refs start at 0, so a socket's first heartbeat can have ref 0
+        const val NO_HEARTBEAT = -1
     }
 
 }
