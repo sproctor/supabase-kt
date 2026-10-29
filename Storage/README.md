@@ -34,6 +34,12 @@ Supported targets:
 
 </details>
 
+# Supabase Service Compatibility
+
+`storage-kt` only guarantees compatibility with the [latest Supabase Storage release](https://github.com/supabase/storage/releases). Older Supabase Storage releases are supported on a best-effort basis, but compatibility is not guaranteed.
+
+If you self-host Supabase Storage, we recommend upgrading to the latest release when upgrading this SDK.
+
 # Installation
 
 Newest version: [![](https://img.shields.io/github/release/supabase-community/supabase-kt?label=)](https://github.com/supabase-community/supabase-kt/releases)
